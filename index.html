@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wong Hanz — Liquid Glass Pond</title>
+<meta name="description" content="Interactive liquid-glass water surface. Drag to make ripples, click to drop, and play droplet.">
+<meta name="theme-color" content="#03050d">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<style>
+  :root{
+    --ink:#eaf6ff;
+    --dim:#93a9c6;
+    --cy:#22d3ee;
+    --vi:#a78bfa;
+    --pk:#f472b6;
+    --lm:#a3e635;
+    --glass:rgba(255,255,255,.055);
+    --edge:rgba(255,255,255,.22);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:#03050d;color:var(--ink);
+    font:400 16px/1.65 ui-sans-serif,system-ui,"Segoe UI",Inter,"Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;overflow-x:hidden;
+  }
+  #pond{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:0;touch-action:none}
+  /* keeps copy legible over a moving light field without hiding the water */
+  .scrim{
+    position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:
+      radial-gradient(125% 95% at 0% 0%, rgba(3,6,16,.90) 0%, rgba(3,6,16,.55) 30%, rgba(3,6,16,.24) 60%, rgba(3,6,16,.06) 100%),
+      linear-gradient(to top, rgba(3,6,16,.80) 0%, rgba(3,6,16,.22) 24%, transparent 50%);
+  }
+  .fallback{position:fixed;inset:0;z-index:0;background:
+    radial-gradient(50% 45% at 20% 25%,rgba(34,211,238,.5),transparent 70%),
+    radial-gradient(45% 50% at 80% 70%,rgba(167,139,250,.45),transparent 70%),
+    radial-gradient(40% 40% at 55% 90%,rgba(244,114,182,.35),transparent 70%),#03050d}
+
+  main{position:relative;z-index:2;max-width:1120px;margin:0 auto;padding:clamp(28px,6vw,84px) clamp(18px,4vw,40px) 130px}
+
+  .glass{
+    background:linear-gradient(150deg,rgba(255,255,255,.13),rgba(255,255,255,.035) 45%,rgba(255,255,255,.012));
+    border:1px solid var(--edge);
+    border-radius:24px;
+    -webkit-backdrop-filter:blur(22px) saturate(190%);
+    backdrop-filter:blur(22px) saturate(190%);
+    box-shadow:0 26px 70px -28px rgba(2,6,24,.9),inset 0 1px 0 rgba(255,255,255,.5),inset 0 -1px 0 rgba(255,255,255,.06);
+    position:relative;overflow:hidden;
+  }
+  .glass::after{
+    content:"";position:absolute;top:0;left:-40%;width:35%;height:100%;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,.16),transparent);
+    transform:skewX(-16deg);animation:sweep 7s ease-in-out infinite;pointer-events:none;
+  }
+  @keyframes sweep{0%,58%{left:-45%}100%{left:125%}}
+
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:9px;padding:7px 15px;border-radius:99px;
+    background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);
+    font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#cfe6f8;
+    -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  }
+  .dot{width:8px;height:8px;border-radius:99px;background:#4ade80;box-shadow:0 0 12px #4ade80;animation:blink 2.2s infinite}
+  @keyframes blink{50%{opacity:.3}}
+
+  h1{
+    margin:22px 0 0;font-size:clamp(50px,10.5vw,116px);line-height:.92;font-weight:800;letter-spacing:-.035em;
+    background:linear-gradient(96deg,#fff 4%,#a5f3fc 38%,#c4b5fd 66%,#f9a8d4 96%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    filter:drop-shadow(0 8px 34px rgba(56,189,248,.34));
+  }
+  .role{margin:16px 0 0;font-size:clamp(17px,2.5vw,23px);font-weight:600;color:#bfe9fb;letter-spacing:.01em}
+  .role b{background:linear-gradient(90deg,var(--cy),var(--vi),var(--pk));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .lede{margin:14px 0 0;max-width:56ch;color:var(--dim);font-size:16px}
+  .hint{margin:26px 0 0;font-size:13.5px;color:#a9c2dd;letter-spacing:.04em;text-shadow:0 1px 14px rgba(2,5,14,.85)}
+  .hint kbd{
+    font:inherit;font-size:11.5px;padding:3px 9px;border-radius:8px;color:#dceaf9;
+    background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.45);
+  }
+
+  .grid{display:grid;gap:18px;margin-top:34px;grid-template-columns:repeat(auto-fit,minmax(258px,1fr))}
+  .card{padding:22px 22px 18px;text-decoration:none;color:inherit;display:flex;flex-direction:column;min-height:172px;
+    transition:transform .38s cubic-bezier(.2,.9,.25,1.2),box-shadow .38s,border-color .38s}
+  .card:hover,.card:focus-visible{transform:translateY(-7px) scale(1.012);border-color:rgba(255,255,255,.42);
+    box-shadow:0 34px 80px -30px rgba(2,6,24,1),0 0 0 1px rgba(167,139,250,.3),inset 0 1px 0 rgba(255,255,255,.6)}
+  .card h3{margin:0;font-size:19px;font-weight:700;letter-spacing:-.01em}
+  .card p{margin:9px 0 0;color:var(--dim);font-size:13.5px;line-height:1.55;flex:1}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .chip{font-size:10.5px;font-weight:700;letter-spacing:.07em;padding:4px 9px;border-radius:99px;
+    background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);color:#d7e9fb}
+  .chip.hot{background:linear-gradient(90deg,rgba(34,211,238,.3),rgba(167,139,250,.3));border-color:rgba(165,243,252,.45);color:#eaf9ff}
+  .go{margin-top:14px;font-size:11.5px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+  .go span{transition:transform .3s}
+  .card:hover .go span{transform:translateX(6px)}
+  .c1 .go{color:var(--cy)} .c2 .go{color:var(--lm)} .c3 .go{color:var(--pk)} .c4 .go{color:var(--vi)}
+
+  /* ── droplet game ── */
+  #hud{
+    position:fixed;z-index:6;left:50%;bottom:clamp(16px,3.5vw,30px);transform:translateX(-50%);
+    display:flex;align-items:center;gap:clamp(10px,2.4vw,20px);padding:11px 13px 11px 20px;border-radius:99px;
+    font-variant-numeric:tabular-nums;user-select:none;
+  }
+  #hud .stat{display:flex;flex-direction:column;line-height:1.1;min-width:52px}
+  #hud .k{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#7f96b6}
+  #hud .v{font-size:19px;font-weight:800;letter-spacing:-.01em}
+  #hud .v.pop{animation:pop .34s cubic-bezier(.2,1.6,.4,1)}
+  @keyframes pop{50%{transform:scale(1.34);color:#a5f3fc}}
+  #combo{color:var(--pk)}
+  #best{color:var(--lm)}
+  #timer{color:var(--cy)}
+  #play{
+    font:inherit;font-size:12.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;
+    color:#04121b;cursor:pointer;padding:11px 20px;border-radius:99px;border:1px solid rgba(255,255,255,.5);
+    background:linear-gradient(96deg,#7dd3fc,#a5f3fc 40%,#c4b5fd);
+    box-shadow:0 10px 26px -10px rgba(125,211,252,.85);transition:transform .2s,filter .2s;
+  }
+  #play:hover{transform:translateY(-2px);filter:brightness(1.09)}
+  #play:active{transform:translateY(1px) scale(.98)}
+  #play[aria-pressed="true"]{background:linear-gradient(96deg,#f472b6,#a78bfa);color:#fff}
+
+  .target{
+    position:absolute;z-index:0;width:74px;height:74px;margin:-37px 0 0 -37px;border-radius:99px;cursor:pointer;
+    border:2px solid rgba(255,255,255,.85);
+    background:radial-gradient(circle at 34% 28%,rgba(255,255,255,.95),rgba(165,243,252,.42) 38%,rgba(139,92,246,.3) 72%,transparent);
+    box-shadow:0 0 28px rgba(125,211,252,.85),inset 0 1px 0 rgba(255,255,255,.9);
+    -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+    animation:life linear forwards;pointer-events:auto;
+  }
+  .target::after{content:"";position:absolute;inset:-9px;border-radius:99px;border:1.5px solid rgba(255,255,255,.35);animation:ring 1s ease-out infinite}
+  @keyframes ring{to{transform:scale(1.55);opacity:0}}
+  @keyframes life{from{transform:scale(.25);opacity:0}18%{transform:scale(1.06);opacity:1}82%{opacity:.9}to{transform:scale(.3);opacity:0}}
+  .burst{position:absolute;z-index:1;width:88px;height:88px;margin:-44px 0 0 -44px;border-radius:99px;pointer-events:none;
+    border:2px solid rgba(255,255,255,.9);animation:burst .55s ease-out forwards}
+  @keyframes burst{to{transform:scale(2.9);opacity:0}}
+  .float{position:absolute;z-index:2;pointer-events:none;font:800 17px/1 ui-sans-serif,system-ui;color:#a5f3fc;
+    text-shadow:0 2px 16px rgba(34,211,238,.9);animation:float 1s ease-out forwards}
+  @keyframes float{to{transform:translateY(-58px);opacity:0}}
+
+  footer{margin-top:46px;padding-top:22px;border-top:1px solid rgba(255,255,255,.1);display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center;font-size:13px;color:var(--dim)}
+  footer a{color:#bfe9fb;text-decoration:none;border-bottom:1px solid rgba(191,233,251,.3)}
+  footer a:hover{color:#fff;border-color:#fff}
+
+  @media (max-width:640px){
+    #hud{gap:11px;padding:9px 11px 9px 15px}
+    #hud .stat{min-width:40px}
+    #hud .v{font-size:16px}
+    #play{padding:9px 14px;font-size:11px}
+    .grid{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .glass::after{animation:none}
+    .dot{animation:none}
+    *{transition-duration:.01ms!important}
+  }
+</style>
+</head>
+<body>
+<canvas id="pond" aria-hidden="true"></canvas>
+<div class="scrim" aria-hidden="true"></div>
+<div id="fx" aria-hidden="true" style="position:fixed;inset:0;z-index:5;pointer-events:none"></div>
+
+<main>
+  <span class="eyebrow"><i class="dot"></i>github.com/wonghanz</span>
+  <h1>Wong&nbsp;Hanz</h1>
+  <p class="role">Systems &amp; <b>AIoT</b> engineer — sensor to socket to screen.</p>
+  <p class="lede">
+    Native mobile, embedded telemetry and agentic AI pipelines running in production:
+    a transit terminal with 300+ daily riders, a 300-head livestock farm, and an exam-prep
+    app with 100+ monthly students. This surface is real fluid — the profile README can only fake it.
+  </p>
+  <p class="hint">Drag to disturb the water · <kbd>click</kbd> to drop · <kbd>space</kbd> to start droplet</p>
+
+  <section class="grid">
+    <a class="glass card c1" href="https://github.com/wonghanz/Eloquent-Lab">
+      <h3>Eloquent Lab</h3>
+      <p>Native iOS + Android exam-prep SaaS. WaveRider prosody scoring on AVAudioEngine, DeepSeek-graded CEFR essays, hybrid RevenueCat + AdMob monetisation.</p>
+      <div class="chips"><span class="chip hot">100+ MAU</span><span class="chip">−90% latency</span><span class="chip">SwiftUI</span><span class="chip">Compose</span></div>
+      <div class="go">Open source <span>→</span></div>
+    </a>
+    <a class="glass card c2" href="https://github.com/wonghanz/NodiGuard">
+      <h3>NodiGuard</h3>
+      <p>Zero-trust local AI proxy for Cursor, VS Code and Aider. Intercepts leaked API keys, tokenises prompts on-device, and reclaims 16 GB of Ollama VRAM.</p>
+      <div class="chips"><span class="chip hot">Leaked-key DLP</span><span class="chip">Python</span><span class="chip">TLS</span></div>
+      <div class="go">Open source <span>→</span></div>
+    </a>
+    <a class="glass card c3" href="https://github.com/wonghanz/Telegram-iOS-Contest-2025">
+      <h3>Liquid Glass on iOS</h3>
+      <p>Where this page came from: refraction shaders backported across iOS 13–18 inside a Telegram fork. Six OS generations, one material language.</p>
+      <div class="chips"><span class="chip hot">This design</span><span class="chip">Swift</span><span class="chip">Metal</span></div>
+      <div class="go">Open source <span>→</span></div>
+    </a>
+    <a class="glass card c4" href="https://github.com/wonghanz?tab=repositories">
+      <h3>PlantX · CapriGuard</h3>
+      <p>Champion, EcoRise Southeast Asia 2026. Agricultural telemetry cutting farm water 30% and lifting growth 50%, plus RFID livestock triage on a working farm.</p>
+      <div class="chips"><span class="chip hot">EcoRise Champion</span><span class="chip">ESP32</span><span class="chip">Petrosains</span></div>
+      <div class="go">All repositories <span>→</span></div>
+    </a>
+  </section>
+
+  <footer>
+    <span>Built as the interactive twin of my profile README — GitHub strips JS from markdown, so the water lives here.</span>
+    <span><a href="mailto:wonghanz2007@gmail.com">wonghanz2007@gmail.com</a> · <a href="https://github.com/wonghanz">↑ profile</a></span>
+  </footer>
+</main>
+
+<div id="hud" class="glass" role="status" aria-live="polite">
+  <div class="stat"><span class="k">Score</span><span class="v" id="score">0</span></div>
+  <div class="stat"><span class="k">Combo</span><span class="v" id="combo">×1</span></div>
+  <div class="stat"><span class="k">Best</span><span class="v" id="best">0</span></div>
+  <div class="stat"><span class="k">Time</span><span class="v" id="timer">30</span></div>
+  <button id="play" type="button" aria-pressed="false">Play</button>
+</div>
+
+<script id="vs" type="x-shader/x-vertex">
+attribute vec2 p;
+void main(){ gl_Position = vec4(p, 0.0, 1.0); }
+</script>
+
+<script id="fs" type="x-shader/x-fragment">
+precision highp float;
+uniform vec2  uRes;
+uniform float uTime;
+uniform sampler2D uH;   // ripple height field, 128 = flat
+uniform vec2  uTexel;
+uniform float uRefract;
+uniform float uAmp;
+
+float hgt(vec2 uv){ return texture2D(uH, uv).r; }
+
+vec3 orb(vec2 p, vec2 c, float r, vec3 col){
+  vec2 d = (p - c) / r;
+  return col * exp(-dot(d, d) * 1.9);
+}
+
+void main(){
+  vec2 uv = gl_FragCoord.xy / uRes;
+  float aspect = uRes.x / uRes.y;
+  vec2 p = vec2(uv.x * aspect, uv.y);
+
+  // surface normal from the height field
+  vec2 t = uTexel * 1.6;
+  vec2 g = vec2(hgt(uv + vec2(t.x, 0.0)) - hgt(uv - vec2(t.x, 0.0)),
+                hgt(uv + vec2(0.0, t.y)) - hgt(uv - vec2(0.0, t.y)));
+
+  // refraction: bend the light field by the local slope
+  vec2 ruv = uv - g * uRefract;
+  vec2 rp  = vec2(ruv.x * aspect, ruv.y);
+
+  float w = uTime * 0.11;
+  vec3 col = vec3(0.008, 0.012, 0.030);
+  col += orb(rp, vec2(0.24 + 0.085 * sin(w),        0.74 + 0.065 * cos(w * 1.3)),        0.44 * aspect, vec3(0.10, 0.78, 0.98) * 0.74);
+  col += orb(rp, vec2(0.79 + 0.075 * cos(w * 0.82), 0.30 + 0.055 * sin(w * 1.12)),       0.50 * aspect, vec3(0.56, 0.36, 0.99) * 0.58);
+  col += orb(rp, vec2(0.54 + 0.062 * sin(w * 1.71), 0.87 + 0.050 * cos(w * 0.73)),       0.34 * aspect, vec3(0.97, 0.33, 0.71) * 0.54);
+  col += orb(rp, vec2(0.09 + 0.055 * cos(w * 1.42), 0.14 + 0.062 * sin(w * 0.91)),       0.30 * aspect, vec3(0.62, 0.90, 0.22) * 0.34);
+  col += orb(rp, vec2(0.95 + 0.030 * sin(w * 2.1),  0.05 + 0.040 * cos(w * 1.6)),        0.22 * aspect, vec3(0.55, 0.95, 1.00) * 0.38);
+
+  // chromatic split along the slope — reads as glass thickness
+  float edge = length(g) * uAmp;
+  col.rb += vec2(1.0, -1.0) * pow(edge, 1.35) * 0.07;
+
+  // specular crest + caustic band
+  float light = dot(normalize(vec3(g * 42.0, 1.0)), normalize(vec3(0.32, 0.46, 0.83)));
+  col *= 0.84 + 0.34 * light;
+  col += vec3(0.72, 0.94, 1.0) * pow(max(light - 0.90, 0.0) * 10.0, 2.0) * 0.55;
+
+  // very faint swell, so a still surface still reads as water
+  vec2 q = fract(rp * vec2(3.4, 3.4) + vec2(0.0, w * 0.22)) - 0.5;
+  col += vec3(0.16, 0.42, 0.62) * (1.0 - smoothstep(0.0, 0.10, min(abs(q.x), abs(q.y)))) * 0.034;
+
+  col *= 1.0 - 0.58 * pow(length(uv - 0.5) * 1.34, 2.3);
+  float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + uTime) * 43758.5453);
+  col += (n - 0.5) * 0.018;
+
+  gl_FragColor = vec4(max(col, 0.0), 1.0);
+}
+</script>
+
+<script>
+(() => {
+  'use strict';
+  const cv = document.getElementById('pond');
+  const fx = document.getElementById('fx');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ───────────────── WebGL: renders the refracted light field ───────────────── */
+  const gl = cv.getContext('webgl', { antialias: false, alpha: false, powerPreference: 'high-performance' })
+          || cv.getContext('experimental-webgl');
+
+  if (!gl) {
+    const fb = document.createElement('div');
+    fb.className = 'fallback';
+    cv.replaceWith(fb);
+  } else {
+    const sh = (type, src) => {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+      return s;
+    };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, document.getElementById('vs').textContent));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, document.getElementById('fs').textContent));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    gl.useProgram(prog);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+    const U = (n) => gl.getUniformLocation(prog, n);
+    const uRes = U('uRes'), uTime = U('uTime'), uH = U('uH'), uTexel = U('uTexel'),
+          uRefract = U('uRefract'), uAmp = U('uAmp');
+
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.uniform1i(uH, 0);
+
+    /* ───────────────── Water: two-buffer height field on the CPU ───────────────── */
+    const Sim = (() => {
+      let W = 0, H = 0, cur = null, prev = null, bytes = null, target = 240;
+      const damping = 0.9715;
+
+      function resize(cw, ch) {
+        if (cw < 1 || ch < 1) return;
+        target = innerWidth < 720 ? 168 : 240;
+        W = target; H = Math.max(48, Math.round(target * ch / cw));
+        cur = new Float32Array(W * H); prev = new Float32Array(W * H);
+        bytes = new Uint8Array(W * H);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, W, H, 0, gl.LUMINANCE, gl.UNSIGNED_BYTE, null);
+      }
+
+      function drop(nx, ny, radius, strength) {
+        if (!cur) return;
+        const gx = nx * W, gy = (1 - ny) * H, r = radius * W;
+        const x0 = Math.max(1, Math.floor(gx - r)), x1 = Math.min(W - 2, Math.ceil(gx + r));
+        const y0 = Math.max(1, Math.floor(gy - r)), y1 = Math.min(H - 2, Math.ceil(gy + r));
+        for (let y = y0; y <= y1; y++) {
+          for (let x = x0; x <= x1; x++) {
+            const d2 = ((x - gx) ** 2 + (y - gy) ** 2) / (r * r);
+            if (d2 < 1) cur[y * W + x] -= strength * (1 - d2) * (1 - d2);
+          }
+        }
+      }
+
+      function step() {
+        for (let y = 1; y < H - 1; y++) {
+          const r = y * W;
+          for (let x = 1; x < W - 1; x++) {
+            const i = r + x;
+            let v = (cur[i - 1] + cur[i + 1] + cur[i - W] + cur[i + W]) * 0.5 - prev[i];
+            prev[i] = v * damping;
+          }
+        }
+        const t = cur; cur = prev; prev = t;
+      }
+
+      function upload() {
+        if (!cur) return null;
+        for (let i = 0; i < cur.length; i++) {
+          const v = cur[i] * 11;
+          bytes[i] = v > 118 ? 255 : v < -118 ? 1 : 128 + v | 0;
+        }
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, W, H, gl.LUMINANCE, gl.UNSIGNED_BYTE, bytes);
+        return [1 / W, 1 / H];
+      }
+
+      return { resize, drop, step, upload, get ready() { return !!cur; } };
+    })();
+
+    /* ───────────────── Sizing ───────────────── */
+    let vw = 0, vh = 0;
+    function fit() {
+      const dpr = Math.min(devicePixelRatio || 1, 1.75);
+      vw = innerWidth; vh = innerHeight;
+      cv.width = Math.round(vw * dpr); cv.height = Math.round(vh * dpr);
+      cv.style.width = vw + 'px'; cv.style.height = vh + 'px';
+      gl.viewport(0, 0, cv.width, cv.height);
+      Sim.resize(cv.width, cv.height);
+    }
+    fit();
+    let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(fit, 140); });
+
+    /* ───────────────── Pointer → water ───────────────── */
+    let lastX = 0, lastY = 0, haveLast = false, dragging = false;
+    const toUv = (cx, cy) => [cx / vw, 1 - cy / vh];
+
+    function trail(cx, cy) {
+      const [u, v] = toUv(cx, cy);
+      if (haveLast) {
+        const dx = cx - lastX, dy = cy - lastY;
+        const dist = Math.hypot(dx, dy);
+        const steps = Math.min(6, Math.max(1, Math.round(dist / 16)));
+        const strength = dragging ? 0.030 : Math.min(0.026, 0.005 + dist * 0.00022);
+        for (let i = 1; i <= steps; i++) {
+          const k = i / steps;
+          Sim.drop(...toUv(lastX + dx * k, lastY + dy * k), 0.022, strength);
+        }
+      }
+      lastX = cx; lastY = cy; haveLast = true;
+    }
+
+    addEventListener('pointermove', (e) => trail(e.clientX, e.clientY), { passive: true });
+    addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.target, #play, .card')) return;
+      dragging = true;
+      Sim.drop(...toUv(e.clientX, e.clientY), 0.05, 0.85);
+    }, { passive: true });
+    addEventListener('pointerup', () => { dragging = false; haveLast = false; }, { passive: true });
+    addEventListener('pointercancel', () => { dragging = false; haveLast = false; }, { passive: true });
+
+    /* ───────────────── Ambient rain keeps the surface alive ───────────────── */
+    let nextRain = 0;
+    function rain(t) {
+      if (reduced) return;
+      if (t < nextRain) return;
+      nextRain = t + 700 + Math.random() * 1900;
+      Sim.drop(Math.random(), Math.random(), 0.024 + Math.random() * 0.038, 0.16 + Math.random() * 0.40);
+    }
+
+    /* ───────────────── Render loop ───────────────── */
+    gl.uniform1f(uRefract, 1.75);
+    gl.uniform1f(uAmp, 15.0);
+    const t0 = performance.now();
+    function frame(now) {
+      const t = now - t0;
+      rain(t);
+      Sim.step(); Sim.step();          // two substeps per frame: faster ripples
+      const texel = Sim.upload();
+      if (texel) {
+        gl.uniform2f(uRes, cv.width, cv.height);
+        gl.uniform2f(uTexel, texel[0], texel[1]);
+        gl.uniform1f(uTime, t / 1000);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  /* ───────────────── droplet: a 30-second reflex game on the pond ───────────────── */
+  const el = (id) => document.getElementById(id);
+  const ui = { score: el('score'), combo: el('combo'), best: el('best'), timer: el('timer'), btn: el('play') };
+  const BEST_KEY = 'hanz.pond.best';
+  const ROUND = 30;
+  let playing = false, score = 0, combo = 1, left = ROUND, spawnAt = 0, endsAt = 0, live = null;
+
+  ui.best.textContent = localStorage.getItem(BEST_KEY) || 0;
+
+  const bump = (node, text) => {
+    node.textContent = text;
+    node.classList.remove('pop');
+    void node.offsetWidth;
+    node.classList.add('pop');
+  };
+
+  function clearTarget() { if (live) { live.remove(); live = null; } }
+
+  function spawn() {
+    clearTarget();
+    const life = Math.max(760, 1500 - score / 6);
+    const t = document.createElement('div');
+    t.className = 'target';
+    t.style.left = (8 + Math.random() * 84) + 'vw';
+    t.style.top = (14 + Math.random() * 62) + 'vh';
+    t.style.animationDuration = life + 'ms';
+    t.setAttribute('role', 'button');
+    t.setAttribute('aria-label', 'Catch this droplet');
+    t.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      const gain = 10 * combo;
+      score += gain; combo = Math.min(8, combo + 1);
+      bump(ui.score, score); bump(ui.combo, '×' + combo);
+      const r = t.getBoundingClientRect();
+      splash(r.left + r.width / 2, r.top + r.height / 2);
+      floatText(r.left + r.width / 2, r.top, '+' + gain);
+      clearTarget();
+      spawnAt = performance.now() + Math.max(180, 520 - combo * 34);
+    });
+    fx.appendChild(t);
+    live = t;
+    spawnAt = performance.now() + life;
+  }
+
+  function splash(x, y) {
+    const b = document.createElement('div');
+    b.className = 'burst';
+    b.style.left = x + 'px'; b.style.top = y + 'px';
+    fx.appendChild(b);
+    setTimeout(() => b.remove(), 560);
+  }
+  function floatText(x, y, txt) {
+    const f = document.createElement('div');
+    f.className = 'float';
+    f.textContent = txt;
+    f.style.left = x + 'px'; f.style.top = (y - 10) + 'px';
+    fx.appendChild(f);
+    setTimeout(() => f.remove(), 1000);
+  }
+
+  function start() {
+    if (playing) return end();
+    playing = true; score = 0; combo = 1; left = ROUND;
+    bump(ui.score, 0); bump(ui.combo, '×1');
+    ui.timer.textContent = ROUND;
+    ui.btn.textContent = 'Stop';
+    ui.btn.setAttribute('aria-pressed', 'true');
+    endsAt = performance.now() + ROUND * 1000;
+    spawnAt = performance.now() + 260;
+  }
+
+  function end() {
+    playing = false;
+    clearTarget();
+    ui.btn.textContent = 'Play';
+    ui.btn.setAttribute('aria-pressed', 'false');
+    const best = Math.max(score, +(localStorage.getItem(BEST_KEY) || 0));
+    localStorage.setItem(BEST_KEY, best);
+    ui.best.textContent = best;
+    ui.timer.textContent = '—';
+  }
+
+  ui.btn.addEventListener('click', start);
+  addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && !['BUTTON', 'INPUT', 'A'].includes(document.activeElement.tagName)) {
+      e.preventDefault(); start();
+    }
+  });
+
+  /* rAF is throttled to ~1fps or paused outright in a background tab, which would
+     freeze the round clock mid-game — so the rules run off wall time instead. */
+  setInterval(() => {
+    if (!playing) return;
+    const now = performance.now();
+    const remain = Math.min(ROUND, Math.ceil((endsAt - now) / 1000));
+    if (remain !== left) {
+      left = remain;
+      ui.timer.textContent = Math.max(0, left);
+      if (left <= 0) { end(); return; }
+    }
+    if (now > spawnAt) {
+      if (live) { clearTarget(); combo = 1; bump(ui.combo, '×1'); }
+      else spawn();
+    }
+  }, 60);
+})();
+</script>
+</body>
+</html>
