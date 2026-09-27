@@ -482,17 +482,25 @@ void main(){
     let ctx = null, master, bus, swell, hiss, rumble, swellFilter, splashBuf, ready = false;
     let on = localStorage.getItem('hanz.pond.sound') === '1';
 
-    function noiseBuffer(seconds) {
+    function noiseBuffer(seconds, seamless = false) {
       const n = Math.floor(ctx.sampleRate * seconds);
-      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
-      const d = buf.getChannelData(0);
+      const m = seamless ? n + 1 : n;
+      const tmp = new Float32Array(m);
       // cheap pink-ish filter over white noise: raw white noise sounds like static
       let last = 0;
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < m; i++) {
         const w = Math.random() * 2 - 1;
         last = (last + 0.02 * w) / 1.02;
-        d[i] = last * 3.2;
+        tmp[i] = last * 3.2;
       }
+      if (seamless) {
+        // A looped buffer whose ends disagree emits one step per lap. At four seconds
+        // that landed as a periodic report nobody had fired, under everything else.
+        const err = tmp[n] - tmp[0];
+        for (let i = 0; i < n; i++) tmp[i] -= err * (i / n);
+      }
+      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+      buf.copyToChannel(tmp.subarray(0, n), 0);
       return buf;
     }
 
@@ -526,26 +534,36 @@ void main(){
       if (!AC) return false;
       ctx = new AC();
       master = ctx.createGain();
-      master.gain.value = on ? 0.5 : 0;
+      master.gain.value = on ? 0.4 : 0;
       master.connect(ctx.destination);
 
       const noise = ctx.createBufferSource();
-      noise.buffer = noiseBuffer(4);
+      noise.buffer = noiseBuffer(4, true);
       noise.loop = true;
       splashBuf = noiseBuffer(0.9);
 
       // One-shots bloom into this space instead of stopping dead — an abrupt dry cut
       // is a large part of what made them read as a report rather than a splash.
+      // The chain is the "water column": sub-bass thump out, air out, then a limiter so
+      // fast tapping sums into a ripple rather than into a crack.
       bus = ctx.createGain();
-      bus.connect(master);
+      const thump = ctx.createBiquadFilter();
+      thump.type = 'highpass'; thump.frequency.value = 140; thump.Q.value = 0.6;
+      const air = ctx.createBiquadFilter();
+      air.type = 'lowpass'; air.frequency.value = 2400; air.Q.value = 0.5;
+      const cell = ctx.createDynamicsCompressor();
+      cell.threshold.value = -20; cell.knee.value = 14; cell.ratio.value = 5;
+      cell.attack.value = 0.004; cell.release.value = 0.2;
+      const dry = ctx.createGain(); dry.gain.value = 0.8;
+      bus.connect(thump).connect(air).connect(cell).connect(dry).connect(master);
       const conv = ctx.createConvolver();
-      conv.buffer = impulse(0.9);
+      conv.buffer = impulse(1.4);
       const convTone = ctx.createBiquadFilter();
       convTone.type = 'lowpass';
-      convTone.frequency.value = 1800;
+      convTone.frequency.value = 1500;
       const wet = ctx.createGain();
-      wet.gain.value = 0.3;
-      bus.connect(conv);
+      wet.gain.value = 0.42;
+      air.connect(conv);
       conv.connect(convTone).connect(wet).connect(master);
 
       // low swell — the body of the sea
@@ -625,40 +643,43 @@ void main(){
       return g;
     }
 
-    // The signature of a drop hitting a surface: the cavity pitch falls, then springs
-    // back. A pure downward sweep is what reads as a shot or a whistle — the recovery
-    // is the part that sounds liquid.
-    function plip(cx, cy, { freq = 640, to = 200, dur = 0.3, peak = 0.24, type = 'sine' } = {}) {
+    // A drop closing a cavity: pitch falls fast, then the water springs back. Two sine
+    // partials, each under its own lowpass, so there is no broadband edge at all — the
+    // "crack" in the earlier pass came from stacking noise on top of this.
+    function plip(cx, cy, { freq = 620, to = 205, dur = 0.34, peak = 0.2 } = {}) {
       if (!ready || !on) return;
       const t = ctx.currentTime;
-      const o = ctx.createOscillator();
-      o.type = type;
-      const f0 = freq * (0.85 + Math.random() * 0.35);
-      o.frequency.setValueAtTime(f0, t);
-      o.frequency.exponentialRampToValueAtTime(to, t + dur * 0.36);
-      o.frequency.exponentialRampToValueAtTime(to * 1.5, t + dur);
-      const f = ctx.createBiquadFilter();
-      f.type = 'lowpass'; f.Q.value = 0.9;
-      f.frequency.setValueAtTime(2400, t);
-      f.frequency.exponentialRampToValueAtTime(680, t + dur);
-      o.connect(f);
-      env(f, t, peak, dur * 1.5, 0.022).connect(panner(cx, cy));
-      o.start(t); o.stop(t + dur * 1.5 + 0.02);
+      const pan = panner(cx, cy);
+      const f0 = freq * (0.8 + Math.random() * 0.45);
+      [[1, 1, 0.022], [0.5, 0.6, 0.055]].forEach(([mul, amp, at]) => {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(f0 * mul, t);
+        o.frequency.exponentialRampToValueAtTime(to * mul, t + dur * 0.3);
+        o.frequency.exponentialRampToValueAtTime(to * mul * 1.45, t + dur);
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass'; lp.Q.value = 0.7;
+        lp.frequency.setValueAtTime(1450, t);
+        lp.frequency.exponentialRampToValueAtTime(500, t + dur);
+        o.connect(lp);
+        env(lp, t, peak * amp, dur * 1.6, at).connect(pan);
+        o.start(t); o.stop(t + dur * 1.6 + 0.02);
+      });
     }
 
-    // Spray is broadband but damped: the energy rolls off into the low mids instead of
-    // ticking at a fixed high frequency.
-    function splashNoise(cx, cy, { freq = 1600, peak = 0.1, dur = 0.4 } = {}) {
+    // The soft body of water arriving a moment late. Deliberately offset from the plink:
+    // two transients landing on the same sample always read as one much sharper hit.
+    function splashNoise(cx, cy, { freq = 620, peak = 0.05, dur = 0.55, at = 0.03 } = {}) {
       if (!ready || !on) return;
-      const t = ctx.currentTime;
+      const t = ctx.currentTime + at;
       const src = ctx.createBufferSource();
       src.buffer = splashBuf;
       const f = ctx.createBiquadFilter();
       f.type = 'lowpass'; f.Q.value = 0.4;
       f.frequency.setValueAtTime(freq, t);
-      f.frequency.exponentialRampToValueAtTime(freq * 0.2, t + dur);
+      f.frequency.exponentialRampToValueAtTime(freq * 0.3, t + dur);
       src.connect(f);
-      env(f, t, peak, dur, 0.05).connect(panner(cx, cy));
+      env(f, t, peak, dur, 0.13).connect(panner(cx, cy));
       src.start(t); src.stop(t + dur + 0.02);
     }
 
@@ -711,9 +732,9 @@ void main(){
       f.frequency.setValueAtTime(880, t);
       f.frequency.exponentialRampToValueAtTime(170, t + 0.34);
       o.connect(f);
-      env(f, t, 0.2, 0.44, 0.06).connect(pan);
-      o.start(t); o.stop(t + 0.48);
-      splashNoise(cx, cy, { freq: 620, peak: 0.07, dur: 0.5 });
+      env(f, t, 0.16, 0.46, 0.09).connect(pan);
+      o.start(t); o.stop(t + 0.5);
+      splashNoise(cx, cy, { freq: 540, peak: 0.05, dur: 0.55 });
     }
 
     function bubble() {
@@ -742,7 +763,7 @@ void main(){
       on = !on;
       localStorage.setItem('hanz.pond.sound', on ? '1' : '0');
       if (ctx.state === 'suspended') ctx.resume();
-      master.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, 0.12);
+      master.gain.setTargetAtTime(on ? 0.4 : 0, ctx.currentTime, 0.12);
       return on;
     }
 
@@ -750,7 +771,7 @@ void main(){
     function unlock() {
       if (!ctx) { if (!build()) return; }
       if (ctx.state === 'suspended') ctx.resume();
-      master.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, 0.2);
+      master.gain.setTargetAtTime(on ? 0.4 : 0, ctx.currentTime, 0.2);
     }
 
     // a hidden tab should not keep synthesising an ocean nobody can hear
@@ -904,8 +925,8 @@ void main(){
       if (e.target.closest('.target, .hudbtn, .card, #sheet button')) return;
       dragging = true;
       Sim.drop(...toUv(e.clientX, e.clientY), 0.05, 0.85);
-      Sound.plip(e.clientX, e.clientY, { freq: 560 + Math.random() * 420, to: 175 + Math.random() * 90 });
-      Sound.splashNoise(e.clientX, e.clientY, { freq: 1500 + Math.random() * 500, dur: 0.32 });
+      Sound.plip(e.clientX, e.clientY, { freq: 520 + Math.random() * 380 });
+      Sound.splashNoise(e.clientX, e.clientY, { freq: 500 + Math.random() * 260 });
     }, { passive: true });
     addEventListener('pointerup', () => { dragging = false; haveLast = false; }, { passive: true });
     addEventListener('pointercancel', () => { dragging = false; haveLast = false; }, { passive: true });
