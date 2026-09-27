@@ -479,7 +479,7 @@ void main(){
      Everything is synthesised — no files to fetch, nothing to licence, and the
      one-shots can be positioned per-occurrence instead of pre-baked stereo. */
   const Sound = (() => {
-    let ctx = null, master, swell, hiss, rumble, swellFilter, splashBuf, ready = false;
+    let ctx = null, master, bus, swell, hiss, rumble, swellFilter, splashBuf, ready = false;
     let on = localStorage.getItem('hanz.pond.sound') === '1';
 
     function noiseBuffer(seconds) {
@@ -492,6 +492,22 @@ void main(){
         const w = Math.random() * 2 - 1;
         last = (last + 0.02 * w) / 1.02;
         d[i] = last * 3.2;
+      }
+      return buf;
+    }
+
+    // A decaying, heavily damped noise burst used as a pool "room" response. Sharing one
+    // ConvolverNode keeps the cost fixed no matter how fast drops are tapped, and mono
+    // halves it again.
+    function impulse(seconds) {
+      const n = Math.floor(ctx.sampleRate * seconds);
+      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      let lp = 0;
+      for (let i = 0; i < n; i++) {
+        const p = i / n;
+        lp += ((Math.random() * 2 - 1) - lp) * 0.14;
+        d[i] = lp * Math.exp(-5.4 * p) * (1 - p);
       }
       return buf;
     }
@@ -516,7 +532,21 @@ void main(){
       const noise = ctx.createBufferSource();
       noise.buffer = noiseBuffer(4);
       noise.loop = true;
-      splashBuf = noiseBuffer(0.3);
+      splashBuf = noiseBuffer(0.9);
+
+      // One-shots bloom into this space instead of stopping dead — an abrupt dry cut
+      // is a large part of what made them read as a report rather than a splash.
+      bus = ctx.createGain();
+      bus.connect(master);
+      const conv = ctx.createConvolver();
+      conv.buffer = impulse(0.9);
+      const convTone = ctx.createBiquadFilter();
+      convTone.type = 'lowpass';
+      convTone.frequency.value = 1800;
+      const wet = ctx.createGain();
+      wet.gain.value = 0.3;
+      bus.connect(conv);
+      conv.connect(convTone).connect(wet).connect(master);
 
       // low swell — the body of the sea
       swellFilter = ctx.createBiquadFilter();
@@ -580,48 +610,61 @@ void main(){
       const z = -2.2;
       if (p.positionX) { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z; }
       else p.setPosition(x, y, z);
-      p.connect(master);
+      p.connect(bus);
       return p;
     }
 
-    function env(node, t0, peak, dur) {
+    // Water never opens instantly. A ~10 ms attack is a click; a soft onset is a body
+    // moving through liquid.
+    function env(node, t0, peak, dur, attack = 0.03) {
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(peak, t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(peak, t0 + attack);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
       node.connect(g);
       return g;
     }
 
-    // the classic water "plip": a sine sweeping down through a couple of octaves
-    function plip(cx, cy, { freq = 880, to = 170, dur = 0.17, peak = 0.5, type = 'sine' } = {}) {
+    // The signature of a drop hitting a surface: the cavity pitch falls, then springs
+    // back. A pure downward sweep is what reads as a shot or a whistle — the recovery
+    // is the part that sounds liquid.
+    function plip(cx, cy, { freq = 640, to = 200, dur = 0.3, peak = 0.24, type = 'sine' } = {}) {
       if (!ready || !on) return;
       const t = ctx.currentTime;
       const o = ctx.createOscillator();
       o.type = type;
-      o.frequency.setValueAtTime(freq, t);
-      o.frequency.exponentialRampToValueAtTime(to, t + dur);
-      env(o, t, peak, dur).connect(panner(cx, cy));
-      o.start(t); o.stop(t + dur + 0.02);
+      const f0 = freq * (0.85 + Math.random() * 0.35);
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(to, t + dur * 0.36);
+      o.frequency.exponentialRampToValueAtTime(to * 1.5, t + dur);
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass'; f.Q.value = 0.9;
+      f.frequency.setValueAtTime(2400, t);
+      f.frequency.exponentialRampToValueAtTime(680, t + dur);
+      o.connect(f);
+      env(f, t, peak, dur * 1.5, 0.022).connect(panner(cx, cy));
+      o.start(t); o.stop(t + dur * 1.5 + 0.02);
     }
 
-    function splashNoise(cx, cy, { freq = 2400, peak = 0.28, dur = 0.2 } = {}) {
+    // Spray is broadband but damped: the energy rolls off into the low mids instead of
+    // ticking at a fixed high frequency.
+    function splashNoise(cx, cy, { freq = 1600, peak = 0.1, dur = 0.4 } = {}) {
       if (!ready || !on) return;
       const t = ctx.currentTime;
       const src = ctx.createBufferSource();
       src.buffer = splashBuf;
       const f = ctx.createBiquadFilter();
-      f.type = 'bandpass'; f.Q.value = 1.1;
+      f.type = 'lowpass'; f.Q.value = 0.4;
       f.frequency.setValueAtTime(freq, t);
-      f.frequency.exponentialRampToValueAtTime(freq * 0.35, t + dur);
+      f.frequency.exponentialRampToValueAtTime(freq * 0.2, t + dur);
       src.connect(f);
-      env(f, t, peak, dur).connect(panner(cx, cy));
+      env(f, t, peak, dur, 0.05).connect(panner(cx, cy));
       src.start(t); src.stop(t + dur + 0.02);
     }
 
     // pentatonic, so a rising combo sounds like a phrase rather than a beep
     const SCALE = [0, 3, 5, 7, 10, 12, 15, 19, 24];
-    function chime(cx, cy, step, { peak = 0.34 } = {}) {
+    function chime(cx, cy, step, { peak = 0.22 } = {}) {
       if (!ready || !on) return;
       const t = ctx.currentTime;
       const semi = SCALE[clamp(step, 0, SCALE.length - 1)];
@@ -631,12 +674,12 @@ void main(){
         const o = ctx.createOscillator();
         o.type = i ? 'triangle' : 'sine';
         o.frequency.value = freq * mul;
-        env(o, t, peak / (i ? 3.2 : 1), 0.5 + i * 0.1).connect(pan);
+        env(o, t, peak / (i ? 3.2 : 1), 0.5 + i * 0.1, 0.025).connect(pan);
         o.start(t); o.stop(t + 0.75);
       });
     }
 
-    function arp(cx, cy, semis, { peak = 0.3 } = {}) {
+    function arp(cx, cy, semis, { peak = 0.2 } = {}) {
       if (!ready || !on) return;
       const t0 = ctx.currentTime, pan = panner(cx, cy);
       semis.forEach((s, i) => {
@@ -646,7 +689,7 @@ void main(){
         o.frequency.setValueAtTime(523.25 * Math.pow(2, s / 12), t);
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(peak, t + 0.015);
+        g.gain.exponentialRampToValueAtTime(peak, t + 0.03);
         g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
         o.connect(g).connect(pan);
         o.start(t); o.stop(t + 0.45);
@@ -657,16 +700,20 @@ void main(){
       if (!ready || !on) return;
       const t = ctx.currentTime;
       const pan = panner(cx, cy);
+      // A jelly should sour the moment, but like mud swallowing something — a raw
+      // sawtooth through a fast decay is the other half of the gunshot.
       const o = ctx.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.setValueAtTime(190, t);
-      o.frequency.exponentialRampToValueAtTime(58, t + 0.34);
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(215, t);
+      o.frequency.exponentialRampToValueAtTime(62, t + 0.32);
       const f = ctx.createBiquadFilter();
-      f.type = 'lowpass'; f.frequency.value = 700;
+      f.type = 'lowpass'; f.Q.value = 3.4;
+      f.frequency.setValueAtTime(880, t);
+      f.frequency.exponentialRampToValueAtTime(170, t + 0.34);
       o.connect(f);
-      env(f, t, 0.4, 0.36).connect(pan);
-      o.start(t); o.stop(t + 0.4);
-      splashNoise(cx, cy, { freq: 900, peak: 0.2, dur: 0.3 });
+      env(f, t, 0.2, 0.44, 0.06).connect(pan);
+      o.start(t); o.stop(t + 0.48);
+      splashNoise(cx, cy, { freq: 620, peak: 0.07, dur: 0.5 });
     }
 
     function bubble() {
@@ -674,11 +721,11 @@ void main(){
       const t = ctx.currentTime;
       const o = ctx.createOscillator();
       o.type = 'sine';
-      const f0 = 320 + Math.random() * 520;
+      const f0 = 280 + Math.random() * 480;
       o.frequency.setValueAtTime(f0, t);
-      o.frequency.exponentialRampToValueAtTime(f0 * 2.6, t + 0.055);
-      env(o, t, 0.09, 0.07).connect(panner(Math.random() * innerWidth, Math.random() * innerHeight));
-      o.start(t); o.stop(t + 0.09);
+      o.frequency.exponentialRampToValueAtTime(f0 * 2.6, t + 0.075);
+      env(o, t, 0.07, 0.11, 0.012).connect(panner(Math.random() * innerWidth, Math.random() * innerHeight));
+      o.start(t); o.stop(t + 0.13);
     }
 
     // the sea changes character with the light: deeper and calmer toward night
@@ -857,8 +904,8 @@ void main(){
       if (e.target.closest('.target, .hudbtn, .card, #sheet button')) return;
       dragging = true;
       Sim.drop(...toUv(e.clientX, e.clientY), 0.05, 0.85);
-      Sound.plip(e.clientX, e.clientY, { freq: 1020, to: 190, peak: 0.34 });
-      Sound.splashNoise(e.clientX, e.clientY, { freq: 2600, peak: 0.14, dur: 0.16 });
+      Sound.plip(e.clientX, e.clientY, { freq: 560 + Math.random() * 420, to: 175 + Math.random() * 90 });
+      Sound.splashNoise(e.clientX, e.clientY, { freq: 1500 + Math.random() * 500, dur: 0.32 });
     }, { passive: true });
     addEventListener('pointerup', () => { dragging = false; haveLast = false; }, { passive: true });
     addEventListener('pointercancel', () => { dragging = false; haveLast = false; }, { passive: true });
