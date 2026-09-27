@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Wong Hanz — Liquid Glass Pond</title>
-<meta name="description" content="Interactive liquid-glass water surface. Drag to make ripples, click to drop, and play droplet.">
+<meta name="description" content="Interactive liquid-glass water surface with real-time wave simulation, spatial ocean audio and a droplet game. Drag to make ripples, stay long enough to watch the sun set.">
 <meta name="theme-color" content="#03050d">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <style>
@@ -15,6 +15,8 @@
     --vi:#a78bfa;
     --pk:#f472b6;
     --lm:#a3e635;
+    --gd:#fbbf24;
+    --warm:0;
     --glass:rgba(255,255,255,.055);
     --edge:rgba(255,255,255,.22);
   }
@@ -33,12 +35,24 @@
       radial-gradient(125% 95% at 0% 0%, rgba(3,6,16,.90) 0%, rgba(3,6,16,.55) 30%, rgba(3,6,16,.24) 60%, rgba(3,6,16,.06) 100%),
       linear-gradient(to top, rgba(3,6,16,.80) 0%, rgba(3,6,16,.22) 24%, transparent 50%);
   }
+  /* the only thing that changes as the day runs out: a warm wash over the chrome.
+     Capped below 1 because screen-blended orange over body copy costs contrast. */
+  .sunwash{
+    position:fixed;inset:0;z-index:1;pointer-events:none;mix-blend-mode:screen;
+    opacity:calc(var(--warm) * 0.58);
+    background:
+      radial-gradient(70% 45% at 78% 8%, rgba(255,170,60,.30), transparent 70%),
+      linear-gradient(to top, rgba(255,110,26,.20) 0%, rgba(255,145,40,.07) 34%, transparent 62%);
+    transition:opacity .9s linear;
+  }
+  /* keeps copy legible when the water behind it goes bright orange */
+  .lede,.role,.hint,.card p,.how li{text-shadow:0 1px 18px rgba(2,5,14,.72),0 1px 3px rgba(2,5,14,.55)}
   .fallback{position:fixed;inset:0;z-index:0;background:
     radial-gradient(50% 45% at 20% 25%,rgba(34,211,238,.5),transparent 70%),
     radial-gradient(45% 50% at 80% 70%,rgba(167,139,250,.45),transparent 70%),
     radial-gradient(40% 40% at 55% 90%,rgba(244,114,182,.35),transparent 70%),#03050d}
 
-  main{position:relative;z-index:2;max-width:1120px;margin:0 auto;padding:clamp(28px,6vw,84px) clamp(18px,4vw,40px) 130px}
+  main{position:relative;z-index:2;max-width:1120px;margin:0 auto;padding:clamp(28px,6vw,84px) clamp(18px,4vw,40px) 150px}
 
   .glass{
     background:linear-gradient(150deg,rgba(255,255,255,.13),rgba(255,255,255,.035) 45%,rgba(255,255,255,.012));
@@ -73,7 +87,7 @@
   }
   .role{margin:16px 0 0;font-size:clamp(17px,2.5vw,23px);font-weight:600;color:#bfe9fb;letter-spacing:.01em}
   .role b{background:linear-gradient(90deg,var(--cy),var(--vi),var(--pk));-webkit-background-clip:text;background-clip:text;color:transparent}
-  .lede{margin:14px 0 0;max-width:56ch;color:var(--dim);font-size:16px}
+  .lede{margin:14px 0 0;max-width:58ch;color:var(--dim);font-size:16px}
   .hint{margin:26px 0 0;font-size:13.5px;color:#a9c2dd;letter-spacing:.04em;text-shadow:0 1px 14px rgba(2,5,14,.85)}
   .hint kbd{
     font:inherit;font-size:11.5px;padding:3px 9px;border-radius:8px;color:#dceaf9;
@@ -81,7 +95,10 @@
     box-shadow:inset 0 1px 0 rgba(255,255,255,.45);
   }
 
-  .grid{display:grid;gap:18px;margin-top:34px;grid-template-columns:repeat(auto-fit,minmax(258px,1fr))}
+  h2{margin:56px 0 0;font-size:clamp(21px,3.4vw,29px);font-weight:800;letter-spacing:-.02em}
+  h2 small{display:block;font:600 11.5px/1.6 ui-monospace,'SFMono-Regular',Consolas,monospace;letter-spacing:.2em;text-transform:uppercase;color:#6f88a8;margin-bottom:8px}
+
+  .grid{display:grid;gap:18px;margin-top:26px;grid-template-columns:repeat(auto-fit,minmax(258px,1fr))}
   .card{padding:22px 22px 18px;text-decoration:none;color:inherit;display:flex;flex-direction:column;min-height:172px;
     transition:transform .38s cubic-bezier(.2,.9,.25,1.2),box-shadow .38s,border-color .38s}
   .card:hover,.card:focus-visible{transform:translateY(-7px) scale(1.012);border-color:rgba(255,255,255,.42);
@@ -92,34 +109,50 @@
   .chip{font-size:10.5px;font-weight:700;letter-spacing:.07em;padding:4px 9px;border-radius:99px;
     background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);color:#d7e9fb}
   .chip.hot{background:linear-gradient(90deg,rgba(34,211,238,.3),rgba(167,139,250,.3));border-color:rgba(165,243,252,.45);color:#eaf9ff}
+  .chip.gold{background:linear-gradient(90deg,rgba(251,191,36,.34),rgba(249,115,22,.28));border-color:rgba(253,224,71,.5);color:#fff7e0}
   .go{margin-top:14px;font-size:11.5px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
   .go span{transition:transform .3s}
   .card:hover .go span{transform:translateX(6px)}
-  .c1 .go{color:var(--cy)} .c2 .go{color:var(--lm)} .c3 .go{color:var(--pk)} .c4 .go{color:var(--vi)}
+  .c1 .go{color:var(--cy)} .c2 .go{color:var(--lm)} .c3 .go{color:var(--pk)} .c4 .go{color:var(--vi)} .c5 .go{color:var(--gd)}
+
+  .how{padding:24px 26px}
+  .how ol{margin:0;padding-left:20px;color:var(--dim);font-size:14.5px}
+  .how li{margin:0 0 11px}
+  .how li b{color:#dceaf9;font-weight:700}
+  .how code{font:600 12.5px/1.5 ui-monospace,'SFMono-Regular',Consolas,monospace;color:#a5f3fc;
+    background:rgba(34,211,238,.09);border:1px solid rgba(34,211,238,.18);border-radius:6px;padding:1px 6px}
 
   /* ── droplet game ── */
   #hud{
     position:fixed;z-index:6;left:50%;bottom:clamp(16px,3.5vw,30px);transform:translateX(-50%);
-    display:flex;align-items:center;gap:clamp(10px,2.4vw,20px);padding:11px 13px 11px 20px;border-radius:99px;
-    font-variant-numeric:tabular-nums;user-select:none;
+    display:flex;align-items:center;gap:clamp(9px,2.2vw,18px);padding:11px 13px 11px 18px;border-radius:99px;
+    font-variant-numeric:tabular-nums;user-select:none;max-width:calc(100vw - 20px);
   }
-  #hud .stat{display:flex;flex-direction:column;line-height:1.1;min-width:52px}
-  #hud .k{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#7f96b6}
+  #hud .stat{display:flex;flex-direction:column;line-height:1.1;min-width:48px}
+  #hud .k{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#7f96b6}
   #hud .v{font-size:19px;font-weight:800;letter-spacing:-.01em}
   #hud .v.pop{animation:pop .34s cubic-bezier(.2,1.6,.4,1)}
   @keyframes pop{50%{transform:scale(1.34);color:#a5f3fc}}
   #combo{color:var(--pk)}
   #best{color:var(--lm)}
   #timer{color:var(--cy)}
-  #play{
-    font:inherit;font-size:12.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;
-    color:#04121b;cursor:pointer;padding:11px 20px;border-radius:99px;border:1px solid rgba(255,255,255,.5);
-    background:linear-gradient(96deg,#7dd3fc,#a5f3fc 40%,#c4b5fd);
-    box-shadow:0 10px 26px -10px rgba(125,211,252,.85);transition:transform .2s,filter .2s;
+  #day{color:var(--gd)}
+  #hud .sep{width:1px;height:26px;background:rgba(255,255,255,.14);flex:0 0 auto}
+  .hudbtn{
+    font:inherit;font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;
+    color:#cfe6f8;cursor:pointer;padding:10px 14px;border-radius:99px;border:1px solid rgba(255,255,255,.22);
+    background:rgba(255,255,255,.08);transition:transform .2s,filter .2s,background .2s;flex:0 0 auto;
   }
-  #play:hover{transform:translateY(-2px);filter:brightness(1.09)}
-  #play:active{transform:translateY(1px) scale(.98)}
+  .hudbtn:hover{transform:translateY(-2px);background:rgba(255,255,255,.14)}
+  .hudbtn:active{transform:translateY(1px) scale(.98)}
+  #play{
+    font-size:12.5px;letter-spacing:.11em;color:#04121b;
+    border:1px solid rgba(255,255,255,.5);
+    background:linear-gradient(96deg,#7dd3fc,#a5f3fc 40%,#c4b5fd);
+    box-shadow:0 10px 26px -10px rgba(125,211,252,.85);
+  }
   #play[aria-pressed="true"]{background:linear-gradient(96deg,#f472b6,#a78bfa);color:#fff}
+  #sound[aria-pressed="true"]{background:linear-gradient(96deg,#fbbf24,#f97316);color:#2a1602;border-color:rgba(253,224,71,.7)}
 
   .target{
     position:absolute;z-index:0;width:74px;height:74px;margin:-37px 0 0 -37px;border-radius:99px;cursor:pointer;
@@ -129,25 +162,76 @@
     -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
     animation:life linear forwards;pointer-events:auto;
   }
+  .target.gold{
+    border-color:rgba(255,247,220,.95);
+    background:radial-gradient(circle at 34% 28%,#fffdf5,rgba(253,224,71,.6) 36%,rgba(249,115,22,.42) 72%,transparent);
+    box-shadow:0 0 40px rgba(251,191,36,.95),inset 0 1px 0 #fff;
+  }
+  .target.jelly{
+    border-color:rgba(255,180,200,.8);
+    background:radial-gradient(circle at 34% 26%,rgba(255,235,245,.9),rgba(244,114,182,.5) 40%,rgba(136,19,55,.5) 74%,transparent);
+    box-shadow:0 0 32px rgba(244,114,182,.8),inset 0 1px 0 rgba(255,255,255,.7);
+  }
+  .target.jelly::before{
+    content:"";position:absolute;left:12px;right:12px;bottom:-16px;height:26px;border-radius:0 0 14px 14px;
+    background:linear-gradient(rgba(244,114,182,.55),transparent);
+  }
   .target::after{content:"";position:absolute;inset:-9px;border-radius:99px;border:1.5px solid rgba(255,255,255,.35);animation:ring 1s ease-out infinite}
   @keyframes ring{to{transform:scale(1.55);opacity:0}}
   @keyframes life{from{transform:scale(.25);opacity:0}18%{transform:scale(1.06);opacity:1}82%{opacity:.9}to{transform:scale(.3);opacity:0}}
   .burst{position:absolute;z-index:1;width:88px;height:88px;margin:-44px 0 0 -44px;border-radius:99px;pointer-events:none;
     border:2px solid rgba(255,255,255,.9);animation:burst .55s ease-out forwards}
+  .burst.gold{border-color:rgba(253,224,71,.95)}
+  .burst.jelly{border-color:rgba(244,114,182,.95)}
   @keyframes burst{to{transform:scale(2.9);opacity:0}}
   .float{position:absolute;z-index:2;pointer-events:none;font:800 17px/1 ui-sans-serif,system-ui;color:#a5f3fc;
     text-shadow:0 2px 16px rgba(34,211,238,.9);animation:float 1s ease-out forwards}
+  .float.gold{color:#fde047;text-shadow:0 2px 18px rgba(251,191,36,.95)}
+  .float.bad{color:#fb7185;text-shadow:0 2px 18px rgba(244,63,94,.9)}
   @keyframes float{to{transform:translateY(-58px);opacity:0}}
 
-  footer{margin-top:46px;padding-top:22px;border-top:1px solid rgba(255,255,255,.1);display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center;font-size:13px;color:var(--dim)}
+  /* toasts + summary */
+  #toasts{position:fixed;z-index:8;top:18px;right:18px;display:flex;flex-direction:column;gap:10px;align-items:flex-end;pointer-events:none}
+  .toast{
+    padding:11px 17px;border-radius:16px;font-size:13.5px;font-weight:700;color:#f2f8ff;
+    background:linear-gradient(150deg,rgba(255,255,255,.16),rgba(255,255,255,.04));
+    border:1px solid rgba(255,255,255,.26);
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+    box-shadow:0 18px 44px -20px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.45);
+    animation:toast 3.6s ease forwards;
+  }
+  .toast b{color:var(--gd)}
+  @keyframes toast{0%{opacity:0;transform:translateX(26px)}12%,78%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-10px)}}
+
+  #sheet{position:fixed;inset:0;z-index:9;display:none;place-items:center;padding:20px;
+    background:rgba(2,5,14,.62);-webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px)}
+  #sheet[aria-hidden="false"]{display:grid}
+  .sheet-in{max-width:430px;width:100%;padding:30px 30px 24px;text-align:center}
+  .sheet-in h3{margin:0;font-size:27px;font-weight:800;letter-spacing:-.02em;
+    background:linear-gradient(96deg,#fff,#fde68a 55%,#fb923c);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sheet-in .big{font-size:62px;font-weight:800;letter-spacing:-.04em;margin:10px 0 2px;color:#fff;line-height:1}
+  .sheet-in .sub{color:var(--dim);font-size:14px;margin:0 0 20px}
+  .rows{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;text-align:left;margin:0 0 22px}
+  .rows div{display:flex;justify-content:space-between;gap:10px;font-size:13.5px;
+    padding:9px 13px;border-radius:12px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.1)}
+  .rows dt{color:#8ea6c4} .rows dd{margin:0;font-weight:800;color:#e7f4ff}
+  .sheet-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .sheet-actions button{font:inherit;font-size:13px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    cursor:pointer;padding:12px 20px;border-radius:99px;color:#04121b;border:1px solid rgba(255,255,255,.5);
+    background:linear-gradient(96deg,#7dd3fc,#a5f3fc 40%,#c4b5fd)}
+  .sheet-actions button.ghost{background:rgba(255,255,255,.08);color:#dceaf9}
+
+  footer{margin-top:52px;padding-top:22px;border-top:1px solid rgba(255,255,255,.1);display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center;font-size:13px;color:var(--dim)}
   footer a{color:#bfe9fb;text-decoration:none;border-bottom:1px solid rgba(191,233,251,.3)}
   footer a:hover{color:#fff;border-color:#fff}
 
-  @media (max-width:640px){
-    #hud{gap:11px;padding:9px 11px 9px 15px}
-    #hud .stat{min-width:40px}
-    #hud .v{font-size:16px}
-    #play{padding:9px 14px;font-size:11px}
+  @media (max-width:760px){
+    #hud{gap:9px;padding:9px 10px 9px 13px;border-radius:22px}
+    #hud .stat{min-width:38px}
+    #hud .v{font-size:15px}
+    #hud .sep{display:none}
+    #day,#best{font-size:14px}
+    .hudbtn{padding:8px 11px;font-size:11px}
     .grid{grid-template-columns:1fr}
   }
   @media (prefers-reduced-motion:reduce){
@@ -160,7 +244,9 @@
 <body>
 <canvas id="pond" aria-hidden="true"></canvas>
 <div class="scrim" aria-hidden="true"></div>
+<div class="sunwash" aria-hidden="true"></div>
 <div id="fx" aria-hidden="true" style="position:fixed;inset:0;z-index:5;pointer-events:none"></div>
+<div id="toasts" aria-live="polite" aria-atomic="false"></div>
 
 <main>
   <span class="eyebrow"><i class="dot"></i>github.com/wonghanz</span>
@@ -171,8 +257,58 @@
     a transit terminal with 300+ daily riders, a 300-head livestock farm, and an exam-prep
     app with 100+ monthly students. This surface is real fluid — the profile README can only fake it.
   </p>
-  <p class="hint">Drag to disturb the water · <kbd>click</kbd> to drop · <kbd>space</kbd> to start droplet</p>
+  <p class="hint">
+    Drag to disturb the water · <kbd>click</kbd> to drop · <kbd>space</kbd> to start droplet ·
+    turn the sound on and stay long enough for the sun to go down
+  </p>
 
+  <section class="grid" aria-label="How to play">
+    <div class="glass card c5">
+      <h3>🎮 Droplet</h3>
+      <p>30 seconds of reflex. Every catch raises your combo up to ×8 — miss one and it resets to ×1.</p>
+      <div class="chips"><span class="chip hot">×8 combo</span><span class="chip">local best</span></div>
+      <div class="go">Press space <span>→</span></div>
+    </div>
+    <div class="glass card c5">
+      <h3>🌇 The day arc</h3>
+      <p>Time of day advances while you are here, and faster while you play. Golden droplets only appear once the light turns warm.</p>
+      <div class="chips"><span class="chip gold">gold = ×5</span><span class="chip">midday → night</span></div>
+      <div class="go">Watch it set <span>→</span></div>
+    </div>
+    <div class="glass card c5">
+      <h3>🎧 Spatial ocean</h3>
+      <p>Not an audio file. A procedural swell plus HRTF-panned one-shots, so a ripple on the left of the screen happens to your left ear.</p>
+      <div class="chips"><span class="chip hot">Web Audio</span><span class="chip">HRTF panner</span></div>
+      <div class="go">Sound on <span>→</span></div>
+    </div>
+    <div class="glass card c5">
+      <h3>🪼 Mind the jellyfish</h3>
+      <p>Pink and pulsing means do not touch. Stinging one breaks your combo and costs 20 points, so the risk is real.</p>
+      <div class="chips"><span class="chip">−20 pts</span><span class="chip">combo reset</span></div>
+      <div class="go">Learn the tell <span>→</span></div>
+    </div>
+  </section>
+
+  <h2><small>Under the hood</small>What is actually running</h2>
+  <section class="glass how">
+    <ol>
+      <li><b>Wave simulation on the CPU.</b> A two-buffer height field solves the discrete wave equation
+        <code>(neighbours × ½) − previous</code> at 240×N with 0.9715 damping and two substeps per frame,
+        so ripples propagate and interfere instead of being a canned texture.</li>
+      <li><b>Refraction from the surface gradient.</b> The field uploads as a <code>LUMINANCE</code> texture;
+        the fragment shader samples four taps to get a normal, then bends the light field by the local slope —
+        that is where the glass thickness and the chromatic split come from.</li>
+      <li><b>Specular tied to the sun.</b> The light vector interpolates with the day phase, so the highlight
+        direction, the caustic colour and the horizon band all move together rather than being a colour filter.</li>
+      <li><b>Sound built from oscillators and noise.</b> A looping filtered-noise swell with slow LFOs, and one-shots
+        through <code>PannerNode</code> in HRTF mode, positioned by mapping screen coordinates into audio space.</li>
+      <li><b>The game clock is wall time, not <code>requestAnimationFrame</code>.</b> rAF is throttled to about
+        1&nbsp;fps in a background tab, which would freeze a round mid-play; the rules run off a 60&nbsp;ms
+        interval and the render loop is only decoration.</li>
+    </ol>
+  </section>
+
+  <h2><small>Selected work</small>Things in production</h2>
   <section class="grid">
     <a class="glass card c1" href="https://github.com/wonghanz/Eloquent-Lab">
       <h3>Eloquent Lab</h3>
@@ -206,12 +342,36 @@
   </footer>
 </main>
 
-<div id="hud" class="glass" role="status" aria-live="polite">
+<div id="hud" class="glass" role="status" aria-live="off">
   <div class="stat"><span class="k">Score</span><span class="v" id="score">0</span></div>
   <div class="stat"><span class="k">Combo</span><span class="v" id="combo">×1</span></div>
   <div class="stat"><span class="k">Best</span><span class="v" id="best">0</span></div>
   <div class="stat"><span class="k">Time</span><span class="v" id="timer">30</span></div>
-  <button id="play" type="button" aria-pressed="false">Play</button>
+  <div class="stat"><span class="k">Day</span><span class="v" id="day">Midday</span></div>
+  <div class="sep"></div>
+  <button id="sound" class="hudbtn" type="button" aria-pressed="false" title="Toggle the ocean">🔇 Sound</button>
+  <button id="play" class="hudbtn" type="button" aria-pressed="false">Play</button>
+</div>
+
+<div id="sheet" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="glass sheet-in">
+    <h3 id="sheetTitle">Round over</h3>
+    <div class="big" id="sScore">0</div>
+    <p class="sub" id="sVerdict">Nice hands.</p>
+    <dl class="rows">
+      <div><dt>Max combo</dt><dd id="sCombo">×1</dd></div>
+      <div><dt>Accuracy</dt><dd id="sAcc">0%</dd></div>
+      <div><dt>Golden</dt><dd id="sGold">0</dd></div>
+      <div><dt>Best</dt><dd id="sBest">0</dd></div>
+      <div><dt>Time of day</dt><dd id="sDay">Midday</dd></div>
+      <div><dt>Stings</dt><dd id="sJelly">0</dd></div>
+    </dl>
+    <div class="sheet-actions">
+      <button type="button" id="again">Again</button>
+      <button type="button" class="ghost" id="share">Copy score</button>
+      <button type="button" class="ghost" id="close">Back to the pond</button>
+    </div>
+  </div>
 </div>
 
 <script id="vs" type="x-shader/x-vertex">
@@ -227,6 +387,7 @@ uniform sampler2D uH;   // ripple height field, 128 = flat
 uniform vec2  uTexel;
 uniform float uRefract;
 uniform float uAmp;
+uniform float uSun;     // 0 = midday, 1 = deep night
 
 float hgt(vec2 uv){ return texture2D(uH, uv).r; }
 
@@ -240,6 +401,10 @@ void main(){
   float aspect = uRes.x / uRes.y;
   vec2 p = vec2(uv.x * aspect, uv.y);
 
+  // warm peaks through golden hour and sunset, then night takes over
+  float warm  = smoothstep(0.24, 0.60, uSun) * (1.0 - smoothstep(0.80, 0.98, uSun));
+  float night = smoothstep(0.74, 0.96, uSun);
+
   // surface normal from the height field
   vec2 t = uTexel * 1.6;
   vec2 g = vec2(hgt(uv + vec2(t.x, 0.0)) - hgt(uv - vec2(t.x, 0.0)),
@@ -250,27 +415,50 @@ void main(){
   vec2 rp  = vec2(ruv.x * aspect, ruv.y);
 
   float w = uTime * 0.11;
-  vec3 col = vec3(0.008, 0.012, 0.030);
-  col += orb(rp, vec2(0.24 + 0.085 * sin(w),        0.74 + 0.065 * cos(w * 1.3)),        0.44 * aspect, vec3(0.10, 0.78, 0.98) * 0.74);
-  col += orb(rp, vec2(0.79 + 0.075 * cos(w * 0.82), 0.30 + 0.055 * sin(w * 1.12)),       0.50 * aspect, vec3(0.56, 0.36, 0.99) * 0.58);
-  col += orb(rp, vec2(0.54 + 0.062 * sin(w * 1.71), 0.87 + 0.050 * cos(w * 0.73)),       0.34 * aspect, vec3(0.97, 0.33, 0.71) * 0.54);
-  col += orb(rp, vec2(0.09 + 0.055 * cos(w * 1.42), 0.14 + 0.062 * sin(w * 0.91)),       0.30 * aspect, vec3(0.62, 0.90, 0.22) * 0.34);
-  col += orb(rp, vec2(0.95 + 0.030 * sin(w * 2.1),  0.05 + 0.040 * cos(w * 1.6)),        0.22 * aspect, vec3(0.55, 0.95, 1.00) * 0.38);
+  vec3 col = mix(vec3(0.008, 0.012, 0.030), vec3(0.024, 0.011, 0.014), warm * 0.85);
+  col = mix(col, vec3(0.004, 0.006, 0.017), night);
+
+  col += orb(rp, vec2(0.24 + 0.085 * sin(w),        0.74 + 0.065 * cos(w * 1.3)),        0.44 * aspect, mix(vec3(0.10, 0.78, 0.98), vec3(0.98, 0.46, 0.14), warm * 0.74) * 0.74);
+  col += orb(rp, vec2(0.79 + 0.075 * cos(w * 0.82), 0.30 + 0.055 * sin(w * 1.12)),       0.50 * aspect, mix(vec3(0.56, 0.36, 0.99), vec3(0.88, 0.24, 0.44), warm * 0.62) * 0.58);
+  col += orb(rp, vec2(0.54 + 0.062 * sin(w * 1.71), 0.87 + 0.050 * cos(w * 0.73)),       0.34 * aspect, vec3(0.97, 0.33, 0.71) * 0.54 * mix(1.0, 0.30, night));
+  col += orb(rp, vec2(0.09 + 0.055 * cos(w * 1.42), 0.14 + 0.062 * sin(w * 0.91)),       0.30 * aspect, vec3(0.62, 0.90, 0.22) * 0.34 * mix(1.0, 0.22, night));
+  col += orb(rp, vec2(0.95 + 0.030 * sin(w * 2.1),  0.05 + 0.040 * cos(w * 1.6)),        0.22 * aspect, vec3(0.55, 0.95, 1.00) * 0.38 * mix(1.0, 0.26, night));
+
+  // the sun: drifts across and sinks, widening and reddening as it goes
+  vec2 sunPos = vec2(mix(0.82, 0.14, uSun) * aspect, mix(0.88, 0.06, pow(uSun, 0.72)));
+  float sd = length((rp - sunPos) / vec2(0.26 * aspect, 0.22));
+  col += mix(vec3(1.0, 0.78, 0.34), vec3(1.0, 0.30, 0.08), clamp(uSun * 1.25, 0.0, 1.0))
+       * exp(-sd * sd * 1.05) * (0.30 + warm * 0.95) * (1.0 - night * 0.85);
+
+  // the orange band that rises up the frame — this is the "sunset" you wait for
+  float band = 1.0 - smoothstep(0.0, 0.08 + warm * 0.60, rp.y);
+  col += vec3(1.0, 0.38, 0.08) * band * warm * 0.44;
 
   // chromatic split along the slope — reads as glass thickness
   float edge = length(g) * uAmp;
   col.rb += vec2(1.0, -1.0) * pow(edge, 1.35) * 0.07;
 
-  // specular crest + caustic band
-  float light = dot(normalize(vec3(g * 42.0, 1.0)), normalize(vec3(0.32, 0.46, 0.83)));
+  // specular crest + caustic band, light direction follows the sun
+  vec3 L = normalize(vec3(mix(0.32, -0.34, uSun), mix(0.46, 0.10, uSun), 0.83));
+  float light = dot(normalize(vec3(g * 42.0, 1.0)), L);
   col *= 0.84 + 0.34 * light;
-  col += vec3(0.72, 0.94, 1.0) * pow(max(light - 0.90, 0.0) * 10.0, 2.0) * 0.55;
+  col += mix(vec3(0.72, 0.94, 1.0), vec3(1.0, 0.70, 0.34), warm)
+       * pow(max(light - 0.90, 0.0) * 10.0, 2.0) * 0.55 * mix(1.0, 0.32, night);
 
   // very faint swell, so a still surface still reads as water
   vec2 q = fract(rp * vec2(3.4, 3.4) + vec2(0.0, w * 0.22)) - 0.5;
-  col += vec3(0.16, 0.42, 0.62) * (1.0 - smoothstep(0.0, 0.10, min(abs(q.x), abs(q.y)))) * 0.034;
+  col += mix(vec3(0.16, 0.42, 0.62), vec3(0.58, 0.26, 0.09), warm * 0.72)
+       * (1.0 - smoothstep(0.0, 0.10, min(abs(q.x), abs(q.y)))) * 0.034;
 
-  col *= 1.0 - 0.58 * pow(length(uv - 0.5) * 1.34, 2.3);
+  // a few stars, only once it is properly dark
+  if (night > 0.02) {
+    vec2 cell = floor(rp * vec2(420.0, 260.0));
+    float s = fract(sin(dot(cell, vec2(127.1, 311.7))) * 43758.5453);
+    float twinkle = 0.5 + 0.5 * sin(uTime * 2.4 + s * 63.0);
+    col += vec3(0.86, 0.92, 1.0) * step(0.99958, s) * twinkle * night * 0.9;
+  }
+
+  col *= 1.0 - (0.58 + night * 0.16) * pow(length(uv - 0.5) * 1.34, 2.3);
   float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233)) + uTime) * 43758.5453);
   col += (n - 0.5) * 0.018;
 
@@ -284,10 +472,259 @@ void main(){
   const cv = document.getElementById('pond');
   const fx = document.getElementById('fx');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  const lerp = (a, b, k) => a + (b - a) * k;
 
-  /* ───────────────── WebGL: renders the refracted light field ───────────────── */
+  /* ═══════════════════════ Spatial audio ═══════════════════════
+     Everything is synthesised — no files to fetch, nothing to licence, and the
+     one-shots can be positioned per-occurrence instead of pre-baked stereo. */
+  const Sound = (() => {
+    let ctx = null, master, swell, hiss, rumble, swellFilter, splashBuf, ready = false;
+    let on = localStorage.getItem('hanz.pond.sound') === '1';
+
+    function noiseBuffer(seconds) {
+      const n = Math.floor(ctx.sampleRate * seconds);
+      const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      // cheap pink-ish filter over white noise: raw white noise sounds like static
+      let last = 0;
+      for (let i = 0; i < n; i++) {
+        const w = Math.random() * 2 - 1;
+        last = (last + 0.02 * w) / 1.02;
+        d[i] = last * 3.2;
+      }
+      return buf;
+    }
+
+    function lfo(rate, depth, target) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = rate;
+      g.gain.value = depth;
+      o.connect(g).connect(target);
+      o.start();
+      return o;
+    }
+
+    function build() {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = on ? 0.5 : 0;
+      master.connect(ctx.destination);
+
+      const noise = ctx.createBufferSource();
+      noise.buffer = noiseBuffer(4);
+      noise.loop = true;
+      splashBuf = noiseBuffer(0.3);
+
+      // low swell — the body of the sea
+      swellFilter = ctx.createBiquadFilter();
+      swellFilter.type = 'lowpass';
+      swellFilter.frequency.value = 420;
+      swellFilter.Q.value = 0.7;
+      swell = ctx.createGain();
+      swell.gain.value = 0.16;
+      noise.connect(swellFilter).connect(swell).connect(master);
+      lfo(0.07, 190, swellFilter.frequency);
+      lfo(0.11, 0.06, swell.gain);
+
+      // surf hiss on top, its own slower cycle so the two never lock phase
+      const hissFilter = ctx.createBiquadFilter();
+      hissFilter.type = 'bandpass';
+      hissFilter.frequency.value = 1700;
+      hissFilter.Q.value = 0.6;
+      hiss = ctx.createGain();
+      hiss.gain.value = 0.035;
+      noise.connect(hissFilter).connect(hiss).connect(master);
+      lfo(0.043, 520, hissFilter.frequency);
+
+      // underwater rumble
+      rumble = ctx.createGain();
+      rumble.gain.value = 0.05;
+      const rumbleFilter = ctx.createBiquadFilter();
+      rumbleFilter.type = 'lowpass';
+      rumbleFilter.frequency.value = 130;
+      rumbleFilter.connect(rumble).connect(master);
+      [57, 63.5, 91].forEach((f, i) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = f;
+        g.gain.value = i === 2 ? 0.25 : 0.5;
+        o.connect(g).connect(rumbleFilter);
+        o.start();
+      });
+
+      noise.start();
+
+      const L = ctx.listener;
+      if (L.forwardX) {
+        L.forwardX.value = 0; L.forwardY.value = 0; L.forwardZ.value = -1;
+        L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0;
+      } else if (L.setOrientation) {
+        L.setOrientation(0, 0, -1, 0, 1, 0);
+      }
+      ready = true;
+      return true;
+    }
+
+    // screen position → a point in front of the listener, so HRTF can place it
+    function panner(cx, cy) {
+      const p = ctx.createPanner();
+      p.panningModel = 'HRTF';
+      p.distanceModel = 'inverse';
+      p.refDistance = 1;
+      p.maxDistance = 24;
+      p.rolloffFactor = 0.7;
+      const x = (cx / innerWidth - 0.5) * 7;
+      const y = (0.5 - cy / innerHeight) * 4.5;
+      const z = -2.2;
+      if (p.positionX) { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z; }
+      else p.setPosition(x, y, z);
+      p.connect(master);
+      return p;
+    }
+
+    function env(node, t0, peak, dur) {
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(peak, t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      node.connect(g);
+      return g;
+    }
+
+    // the classic water "plip": a sine sweeping down through a couple of octaves
+    function plip(cx, cy, { freq = 880, to = 170, dur = 0.17, peak = 0.5, type = 'sine' } = {}) {
+      if (!ready || !on) return;
+      const t = ctx.currentTime;
+      const o = ctx.createOscillator();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t);
+      o.frequency.exponentialRampToValueAtTime(to, t + dur);
+      env(o, t, peak, dur).connect(panner(cx, cy));
+      o.start(t); o.stop(t + dur + 0.02);
+    }
+
+    function splashNoise(cx, cy, { freq = 2400, peak = 0.28, dur = 0.2 } = {}) {
+      if (!ready || !on) return;
+      const t = ctx.currentTime;
+      const src = ctx.createBufferSource();
+      src.buffer = splashBuf;
+      const f = ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.Q.value = 1.1;
+      f.frequency.setValueAtTime(freq, t);
+      f.frequency.exponentialRampToValueAtTime(freq * 0.35, t + dur);
+      src.connect(f);
+      env(f, t, peak, dur).connect(panner(cx, cy));
+      src.start(t); src.stop(t + dur + 0.02);
+    }
+
+    // pentatonic, so a rising combo sounds like a phrase rather than a beep
+    const SCALE = [0, 3, 5, 7, 10, 12, 15, 19, 24];
+    function chime(cx, cy, step, { peak = 0.34 } = {}) {
+      if (!ready || !on) return;
+      const t = ctx.currentTime;
+      const semi = SCALE[clamp(step, 0, SCALE.length - 1)];
+      const freq = 392 * Math.pow(2, semi / 12);
+      const pan = panner(cx, cy);
+      [1, 2.004].forEach((mul, i) => {
+        const o = ctx.createOscillator();
+        o.type = i ? 'triangle' : 'sine';
+        o.frequency.value = freq * mul;
+        env(o, t, peak / (i ? 3.2 : 1), 0.5 + i * 0.1).connect(pan);
+        o.start(t); o.stop(t + 0.75);
+      });
+    }
+
+    function arp(cx, cy, semis, { peak = 0.3 } = {}) {
+      if (!ready || !on) return;
+      const t0 = ctx.currentTime, pan = panner(cx, cy);
+      semis.forEach((s, i) => {
+        const t = t0 + i * 0.075;
+        const o = ctx.createOscillator();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(523.25 * Math.pow(2, s / 12), t);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(peak, t + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+        o.connect(g).connect(pan);
+        o.start(t); o.stop(t + 0.45);
+      });
+    }
+
+    function sting(cx, cy) {
+      if (!ready || !on) return;
+      const t = ctx.currentTime;
+      const pan = panner(cx, cy);
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(190, t);
+      o.frequency.exponentialRampToValueAtTime(58, t + 0.34);
+      const f = ctx.createBiquadFilter();
+      f.type = 'lowpass'; f.frequency.value = 700;
+      o.connect(f);
+      env(f, t, 0.4, 0.36).connect(pan);
+      o.start(t); o.stop(t + 0.4);
+      splashNoise(cx, cy, { freq: 900, peak: 0.2, dur: 0.3 });
+    }
+
+    function bubble() {
+      if (!ready || !on) return;
+      const t = ctx.currentTime;
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      const f0 = 320 + Math.random() * 520;
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(f0 * 2.6, t + 0.055);
+      env(o, t, 0.09, 0.07).connect(panner(Math.random() * innerWidth, Math.random() * innerHeight));
+      o.start(t); o.stop(t + 0.09);
+    }
+
+    // the sea changes character with the light: deeper and calmer toward night
+    function setDay(warm, night) {
+      if (!ready) return;
+      const t = ctx.currentTime;
+      swellFilter.frequency.setTargetAtTime(lerp(420, 240, night), t, 1.5);
+      swell.gain.setTargetAtTime(lerp(0.16, 0.10, night) + warm * 0.03, t, 1.5);
+      hiss.gain.setTargetAtTime(0.035 * (1 - night * 0.6), t, 1.5);
+    }
+
+    function toggle() {
+      if (!ctx && !build()) return false;
+      on = !on;
+      localStorage.setItem('hanz.pond.sound', on ? '1' : '0');
+      if (ctx.state === 'suspended') ctx.resume();
+      master.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, 0.12);
+      return on;
+    }
+
+    // browsers only allow an AudioContext to start from a gesture
+    function unlock() {
+      if (!ctx) { if (!build()) return; }
+      if (ctx.state === 'suspended') ctx.resume();
+      master.gain.setTargetAtTime(on ? 0.5 : 0, ctx.currentTime, 0.2);
+    }
+
+    // a hidden tab should not keep synthesising an ocean nobody can hear
+    function visibility(hidden) {
+      if (!ready) return;
+      if (hidden) { if (ctx.state === 'running') ctx.suspend(); }
+      else if (ctx.state === 'suspended') ctx.resume();
+    }
+
+    return {
+      toggle, unlock, plip, splashNoise, chime, arp, sting, bubble, setDay, visibility,
+      get isOn() { return on; },
+      get live() { return ready && on; },
+    };
+  })();
+
+  /* ═══════════════════════ WebGL: renders the refracted light field ═══════════════════════ */
   const gl = cv.getContext('webgl', { antialias: false, alpha: false, powerPreference: 'high-performance' })
           || cv.getContext('experimental-webgl');
+
+  let setSunUniform = () => {};
 
   if (!gl) {
     const fb = document.createElement('div');
@@ -315,7 +752,7 @@ void main(){
 
     const U = (n) => gl.getUniformLocation(prog, n);
     const uRes = U('uRes'), uTime = U('uTime'), uH = U('uH'), uTexel = U('uTexel'),
-          uRefract = U('uRefract'), uAmp = U('uAmp');
+          uRefract = U('uRefract'), uAmp = U('uAmp'), uSun = U('uSun');
 
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -326,7 +763,7 @@ void main(){
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.uniform1i(uH, 0);
 
-    /* ───────────────── Water: two-buffer height field on the CPU ───────────────── */
+    /* ═══════════════════════ Water: two-buffer height field on the CPU ═══════════════════════ */
     const Sim = (() => {
       let W = 0, H = 0, cur = null, prev = null, bytes = null, target = 240;
       const damping = 0.9715;
@@ -380,7 +817,9 @@ void main(){
       return { resize, drop, step, upload, get ready() { return !!cur; } };
     })();
 
-    /* ───────────────── Sizing ───────────────── */
+    setSunUniform = (v) => gl.uniform1f(uSun, v);
+
+    /* ═══════════════════════ Sizing ═══════════════════════ */
     let vw = 0, vh = 0;
     function fit() {
       const dpr = Math.min(devicePixelRatio || 1, 1.75);
@@ -393,7 +832,7 @@ void main(){
     fit();
     let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(fit, 140); });
 
-    /* ───────────────── Pointer → water ───────────────── */
+    /* ═══════════════════════ Pointer → water ═══════════════════════ */
     let lastX = 0, lastY = 0, haveLast = false, dragging = false;
     const toUv = (cx, cy) => [cx / vw, 1 - cy / vh];
 
@@ -414,52 +853,151 @@ void main(){
 
     addEventListener('pointermove', (e) => trail(e.clientX, e.clientY), { passive: true });
     addEventListener('pointerdown', (e) => {
-      if (e.target.closest('.target, #play, .card')) return;
+      Sound.unlock();
+      if (e.target.closest('.target, .hudbtn, .card, #sheet button')) return;
       dragging = true;
       Sim.drop(...toUv(e.clientX, e.clientY), 0.05, 0.85);
+      Sound.plip(e.clientX, e.clientY, { freq: 1020, to: 190, peak: 0.34 });
+      Sound.splashNoise(e.clientX, e.clientY, { freq: 2600, peak: 0.14, dur: 0.16 });
     }, { passive: true });
     addEventListener('pointerup', () => { dragging = false; haveLast = false; }, { passive: true });
     addEventListener('pointercancel', () => { dragging = false; haveLast = false; }, { passive: true });
 
-    /* ───────────────── Ambient rain keeps the surface alive ───────────────── */
+    /* ═══════════════════════ Ambient rain keeps the surface alive ═══════════════════════ */
     let nextRain = 0;
     function rain(t) {
       if (reduced) return;
       if (t < nextRain) return;
       nextRain = t + 700 + Math.random() * 1900;
-      Sim.drop(Math.random(), Math.random(), 0.024 + Math.random() * 0.038, 0.16 + Math.random() * 0.40);
+      const r = 0.024 + Math.random() * 0.038;
+      Sim.drop(Math.random(), Math.random(), r, 0.16 + Math.random() * 0.40);
+      if (Math.random() < 0.5) Sound.bubble();
     }
 
-    /* ───────────────── Render loop ───────────────── */
+    /* ═══════════════════════ Render loop ═══════════════════════ */
     gl.uniform1f(uRefract, 1.75);
     gl.uniform1f(uAmp, 15.0);
     const t0 = performance.now();
+    let paused = false;
+    addEventListener('visibilitychange', () => {
+      // stop burning a GPU/CPU loop in a tab nobody is looking at
+      paused = document.hidden;
+      Sound.visibility(document.hidden);
+    });
+
     function frame(now) {
-      const t = now - t0;
-      rain(t);
-      Sim.step(); Sim.step();          // two substeps per frame: faster ripples
-      const texel = Sim.upload();
-      if (texel) {
-        gl.uniform2f(uRes, cv.width, cv.height);
-        gl.uniform2f(uTexel, texel[0], texel[1]);
-        gl.uniform1f(uTime, t / 1000);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (!paused) {
+        const t = now - t0;
+        rain(t);
+        Sim.step(); Sim.step();          // two substeps per frame: faster ripples
+        const texel = Sim.upload();
+        if (texel) {
+          gl.uniform2f(uRes, cv.width, cv.height);
+          gl.uniform2f(uTexel, texel[0], texel[1]);
+          gl.uniform1f(uTime, t / 1000);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
       }
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
   }
 
-  /* ───────────────── droplet: a 30-second reflex game on the pond ───────────────── */
+  /* ═══════════════════════ Day arc ═══════════════════════
+     Advances only while the tab is visible, and faster while a round is running,
+     so the sunset is a reward for playing rather than for leaving the tab open. */
+  const DAY = {
+    // ?sun=0.62 drops you straight into the sunset — handy for a shared link
+    phase: clamp(parseFloat(new URLSearchParams(location.search).get('sun')) || 0, 0, 0.999),
+    CYCLE: 300_000,                       // 5 minutes of attention, midday → night
+    last: performance.now(),
+    el: document.getElementById('day'),
+    stops: [
+      [0.00, 'Midday'], [0.24, 'Afternoon'], [0.40, 'Golden hour'],
+      [0.60, 'Sunset'], [0.78, 'Blue hour'], [0.90, 'Night'],
+    ],
+    name(p) {
+      let n = this.stops[0][1];
+      for (const [t, label] of this.stops) if (p >= t) n = label;
+      return n;
+    },
+    warm(p) { return Math.max(0, Math.min(1,
+      (p >= 0.24 ? (p - 0.24) / 0.36 : 0) * (p < 0.80 ? 1 : 1 - (p - 0.80) / 0.18))); },
+    night(p) { return Math.max(0, Math.min(1, (p - 0.74) / 0.22)); },
+  };
+  const seen = new Set();
+
+  setInterval(() => {
+    const now = performance.now();
+    const dt = now - DAY.last;
+    DAY.last = now;
+    if (document.hidden) return;                 // the day waits for you
+    DAY.phase = (DAY.phase + dt / DAY.CYCLE * (playing ? 2.1 : 1)) % 1;
+    const p = DAY.phase;
+    const warm = DAY.warm(p), night = DAY.night(p);
+
+    setSunUniform(p);
+    document.documentElement.style.setProperty('--warm', warm.toFixed(3));
+    Sound.setDay(warm, night);
+
+    const label = DAY.name(p);
+    if (DAY.el.textContent !== label) {
+      DAY.el.textContent = label;
+      if (!seen.has(label)) {
+        seen.add(label);
+        if (seen.size > 1 && p > 0.2) toast(`🌇 <b>${label}</b> over the pond`);
+      }
+    }
+    if (p > 0.40 && p < 0.80) unlock('sunset');
+    if (p > 0.90) unlock('night');
+  }, 120);
+  // seed once so a ?sun= link looks right before the first tick lands
+  document.getElementById('day').textContent = DAY.name(DAY.phase);
+  document.documentElement.style.setProperty('--warm', DAY.warm(DAY.phase).toFixed(3));
+  setSunUniform(DAY.phase);
+
+  /* ═══════════════════════ Toasts + achievements ═══════════════════════ */
+  const toasts = document.getElementById('toasts');
+  function toast(html, ms = 3600) {
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = html;
+    toasts.appendChild(t);
+    setTimeout(() => t.remove(), ms);
+    while (toasts.children.length > 3) toasts.firstChild.remove();
+  }
+
+  const ACH_KEY = 'hanz.pond.ach';
+  const ACH = {
+    first:  '🥇 First catch',
+    combo8: '🔥 ×8 combo',
+    gold:   '✨ Golden droplet',
+    sunset: '🌇 Stayed for sunset',
+    night:  '🌙 Stayed till night',
+    big:    '💯 500 points',
+  };
+  let unlocked = {};
+  try { unlocked = JSON.parse(localStorage.getItem(ACH_KEY) || '{}'); } catch { unlocked = {}; }
+  function unlock(id) {
+    if (unlocked[id] || !ACH[id]) return;
+    unlocked[id] = 1;
+    localStorage.setItem(ACH_KEY, JSON.stringify(unlocked));
+    toast(`Unlocked · <b>${ACH[id]}</b>`);
+  }
+
+  /* ═══════════════════════ droplet: a 30-second reflex game on the pond ═══════════════════════ */
   const el = (id) => document.getElementById(id);
-  const ui = { score: el('score'), combo: el('combo'), best: el('best'), timer: el('timer'), btn: el('play') };
+  const ui = { score: el('score'), combo: el('combo'), best: el('best'), timer: el('timer'), btn: el('play'), sound: el('sound') };
   const BEST_KEY = 'hanz.pond.best';
   const ROUND = 30;
   let playing = false, score = 0, combo = 1, left = ROUND, spawnAt = 0, endsAt = 0, live = null;
+  let hits = 0, spawns = 0, maxCombo = 1, golds = 0, stings = 0;
 
   ui.best.textContent = localStorage.getItem(BEST_KEY) || 0;
+  ui.sound.setAttribute('aria-pressed', Sound.isOn ? 'true' : 'false');
+  ui.sound.textContent = (Sound.isOn ? '🔊' : '🔇') + ' Sound';
 
   const bump = (node, text) => {
     node.textContent = text;
@@ -470,51 +1008,131 @@ void main(){
 
   function clearTarget() { if (live) { live.remove(); live = null; } }
 
+  function pickKind() {
+    const warm = DAY.warm(DAY.phase);
+    const r = Math.random();
+    // golden droplets are a sunset reward — the light literally changes the odds
+    if (r < 0.05 + warm * 0.16) return 'gold';
+    if (r > 0.86 && score > 40) return 'jelly';
+    return 'drop';
+  }
+
   function spawn() {
     clearTarget();
-    const life = Math.max(760, 1500 - score / 6);
+    const kind = pickKind();
+    const life = Math.max(760, 1500 - score / 6) * (kind === 'gold' ? 0.72 : 1);
     const t = document.createElement('div');
-    t.className = 'target';
+    t.className = 'target' + (kind === 'drop' ? '' : ' ' + kind);
     t.style.left = (8 + Math.random() * 84) + 'vw';
     t.style.top = (14 + Math.random() * 62) + 'vh';
     t.style.animationDuration = life + 'ms';
     t.setAttribute('role', 'button');
-    t.setAttribute('aria-label', 'Catch this droplet');
+    t.setAttribute('aria-label', kind === 'jelly' ? 'Jellyfish — avoid it' : 'Catch this droplet');
+    t.dataset.kind = kind;
     t.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
-      const gain = 10 * combo;
-      score += gain; combo = Math.min(8, combo + 1);
-      bump(ui.score, score); bump(ui.combo, '×' + combo);
       const r = t.getBoundingClientRect();
-      splash(r.left + r.width / 2, r.top + r.height / 2);
-      floatText(r.left + r.width / 2, r.top, '+' + gain);
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      hits++;
+      if (kind === 'jelly') {
+        stings++;
+        combo = 1;
+        score = Math.max(0, score - 20);
+        bump(ui.score, score); bump(ui.combo, '×1');
+        splash(cx, cy, 'jelly');
+        floatText(cx, r.top, '−20', 'bad');
+        Sound.sting(cx, cy);
+      } else {
+        const mult = kind === 'gold' ? 5 : 1;
+        const gain = 10 * combo * mult;
+        score += gain;
+        combo = Math.min(8, combo + 1);
+        maxCombo = Math.max(maxCombo, combo);
+        bump(ui.score, score); bump(ui.combo, '×' + combo);
+        splash(cx, cy, kind);
+        floatText(cx, r.top, '+' + gain, kind === 'gold' ? 'gold' : '');
+        if (kind === 'gold') {
+          golds++;
+          Sound.arp(cx, cy, [0, 4, 7, 12]);
+          unlock('gold');
+        } else {
+          Sound.chime(cx, cy, combo - 1);
+        }
+        unlock('first');
+        if (combo >= 8) unlock('combo8');
+        if (score >= 500) unlock('big');
+      }
       clearTarget();
       spawnAt = performance.now() + Math.max(180, 520 - combo * 34);
     });
     fx.appendChild(t);
     live = t;
+    spawns++;
     spawnAt = performance.now() + life;
   }
 
-  function splash(x, y) {
+  function splash(x, y, kind) {
     const b = document.createElement('div');
-    b.className = 'burst';
+    b.className = 'burst' + (kind && kind !== 'drop' ? ' ' + kind : '');
     b.style.left = x + 'px'; b.style.top = y + 'px';
     fx.appendChild(b);
     setTimeout(() => b.remove(), 560);
   }
-  function floatText(x, y, txt) {
+  function floatText(x, y, txt, cls) {
     const f = document.createElement('div');
-    f.className = 'float';
+    f.className = 'float' + (cls ? ' ' + cls : '');
     f.textContent = txt;
     f.style.left = x + 'px'; f.style.top = (y - 10) + 'px';
     fx.appendChild(f);
     setTimeout(() => f.remove(), 1000);
   }
 
+  /* ── round summary ── */
+  const sheet = el('sheet');
+  const VERDICTS = [
+    [0,    'The pond is unimpressed.'],
+    [150,  'Solid reflexes.'],
+    [300,  'You are riding the swell.'],
+    [500,  'Golden-hour hands. 🌇'],
+    [800,  'Pond royalty.'],
+  ];
+  function showSummary() {
+    el('sScore').textContent = score;
+    el('sCombo').textContent = '×' + maxCombo;
+    el('sAcc').textContent = spawns ? Math.round(hits / spawns * 100) + '%' : '—';
+    el('sGold').textContent = golds;
+    el('sBest').textContent = localStorage.getItem(BEST_KEY) || 0;
+    el('sDay').textContent = DAY.name(DAY.phase);
+    el('sJelly').textContent = stings;
+    let v = VERDICTS[0][1];
+    for (const [min, txt] of VERDICTS) if (score >= min) v = txt;
+    el('sVerdict').textContent = v;
+    sheet.setAttribute('aria-hidden', 'false');
+    el('again').focus();
+  }
+  const hideSummary = () => sheet.setAttribute('aria-hidden', 'true');
+
+  el('close').addEventListener('click', hideSummary);
+  el('again').addEventListener('click', () => { hideSummary(); start(); });
+  el('share').addEventListener('click', async () => {
+    const txt = `Scored ${score} on the liquid-glass pond (×${maxCombo} combo, ${golds} golden) — https://wonghanz.github.io/playground/`;
+    try {
+      await navigator.clipboard.writeText(txt);
+      toast('📋 <b>Copied</b> — share it anywhere');
+    } catch {
+      toast('Copy blocked — the link is wonghanz.github.io/playground');
+    }
+  });
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && sheet.getAttribute('aria-hidden') === 'false') hideSummary();
+  });
+
   function start() {
-    if (playing) return end();
+    if (playing) return end(true);
+    Sound.unlock();
     playing = true; score = 0; combo = 1; left = ROUND;
+    hits = spawns = golds = stings = 0;
+    maxCombo = 1;
     bump(ui.score, 0); bump(ui.combo, '×1');
     ui.timer.textContent = ROUND;
     ui.btn.textContent = 'Stop';
@@ -523,18 +1141,29 @@ void main(){
     spawnAt = performance.now() + 260;
   }
 
-  function end() {
+  function end(showSheet = false) {
     playing = false;
     clearTarget();
     ui.btn.textContent = 'Play';
     ui.btn.setAttribute('aria-pressed', 'false');
-    const best = Math.max(score, +(localStorage.getItem(BEST_KEY) || 0));
+    const prev = +(localStorage.getItem(BEST_KEY) || 0);
+    const best = Math.max(score, prev);
     localStorage.setItem(BEST_KEY, best);
     ui.best.textContent = best;
     ui.timer.textContent = '—';
+    if (showSheet) {
+      if (score > prev && score > 0) toast('🏆 <b>New personal best</b>');
+      showSummary();
+    }
   }
 
   ui.btn.addEventListener('click', start);
+  ui.sound.addEventListener('click', () => {
+    const nowOn = Sound.toggle();
+    ui.sound.setAttribute('aria-pressed', nowOn ? 'true' : 'false');
+    ui.sound.textContent = (nowOn ? '🔊' : '🔇') + ' Sound';
+    if (nowOn) toast('🎧 Ocean on — ripples pan to where you touch');
+  });
   addEventListener('keydown', (e) => {
     if (e.code === 'Space' && !['BUTTON', 'INPUT', 'A'].includes(document.activeElement.tagName)) {
       e.preventDefault(); start();
@@ -550,11 +1179,16 @@ void main(){
     if (remain !== left) {
       left = remain;
       ui.timer.textContent = Math.max(0, left);
-      if (left <= 0) { end(); return; }
+      if (left <= 0) { end(true); return; }
+      if (left === 10) toast('⏱ 10 seconds left', 1600);
     }
     if (now > spawnAt) {
-      if (live) { clearTarget(); combo = 1; bump(ui.combo, '×1'); }
-      else spawn();
+      if (live) {
+        // letting one expire costs the combo but not the points — that is the pressure
+        clearTarget();
+        combo = 1;
+        bump(ui.combo, '×1');
+      } else spawn();
     }
   }, 60);
 })();
